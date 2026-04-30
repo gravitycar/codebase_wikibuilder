@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# MAPS database (docs are tracked)
+.maps/maps.db*
+.maps/guidelines
+.mcp.json
