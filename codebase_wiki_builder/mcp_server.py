@@ -36,26 +36,37 @@ logger = logging.getLogger(__name__)
 
 # ── Tool definition ──────────────────────────────────────────────────────────
 
-WIKI_QUERY_TOOL = mcp.types.Tool(
-    name="wiki_query",
-    description=(
-        "Query the codebase wiki with a natural language question. "
-        "Returns a grounded answer, the list of source files consulted, "
-        "the path of the automatically saved query page, and any stale-page warnings. "
-        "The answer is always saved to queries/ automatically."
-    ),
-    inputSchema={
-        "type": "object",
-        "properties": {
-            "question": {
-                "type": "string",
-                "description": "The natural language question to answer from the wiki.",
-            }
-        },
-        "required": ["question"],
-        "additionalProperties": False,
+_WIKI_QUERY_TOOL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "question": {
+            "type": "string",
+            "description": "The natural language question to answer from the wiki.",
+        }
     },
+    "required": ["question"],
+    "additionalProperties": False,
+}
+
+_WIKI_QUERY_BASE_DESCRIPTION = (
+    "Query the codebase wiki with a natural language question. "
+    "Returns a grounded answer, the list of source files consulted, "
+    "the path of the automatically saved query page, and any stale-page warnings. "
+    "The answer is always saved to queries/ automatically."
 )
+
+
+def _build_tool(wiki_description: str = "") -> mcp.types.Tool:
+    """Build the wiki_query Tool, optionally prefixing a codebase-specific description."""
+    if wiki_description.strip():
+        description = wiki_description.strip() + " " + _WIKI_QUERY_BASE_DESCRIPTION
+    else:
+        description = _WIKI_QUERY_BASE_DESCRIPTION
+    return mcp.types.Tool(
+        name="wiki_query",
+        description=description,
+        inputSchema=_WIKI_QUERY_TOOL_SCHEMA,
+    )
 
 # ── MCP server instance ──────────────────────────────────────────────────────
 
@@ -75,7 +86,7 @@ _log_fn: Callable[[str], None]
 @server.list_tools()
 async def list_tools() -> list[mcp.types.Tool]:
     """Return the list of tools this server exposes."""
-    return [WIKI_QUERY_TOOL]
+    return [_build_tool(_config.wiki_description)]
 
 
 @server.call_tool()
@@ -206,16 +217,27 @@ async def _handle_wiki_query(
 def main() -> None:
     """Entry point for the wiki-mcp console script.
 
-    1. Resolve vault root (cwd at startup).
+    1. Resolve vault root (--vault arg, or cwd as fallback).
     2. Set up logging (debug log file; no rich terminal output).
     3. Load config.
     4. Instantiate LLMClient.
     5. Wire module-level state.
     6. Start MCP stdio server loop.
     """
+    import argparse
+
     global _vault_root, _llm_client, _config, _log_fn  # noqa: PLW0603
 
-    vault_root = Path.cwd()
+    parser = argparse.ArgumentParser(prog="wiki-mcp", add_help=False)
+    parser.add_argument(
+        "--vault",
+        metavar="PATH",
+        default=None,
+        help="Path to the Obsidian vault root (default: current directory).",
+    )
+    args, _ = parser.parse_known_args()
+
+    vault_root = Path(args.vault).resolve() if args.vault else Path.cwd()
     setup_logging(vault_root)
 
     try:

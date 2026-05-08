@@ -871,7 +871,7 @@ def _print_help_mcp() -> None:
         "\n"
         "The wiki-mcp server exposes a single MCP tool (wiki_query) that lets AI\n"
         "coding agents query your wiki without re-scanning source files. It runs\n"
-        "against the vault directory you specify via --project and answers questions\n"
+        "against the vault directory specified by --vault and answers questions\n"
         "using the same logic as `codewiki query`, but returns structured JSON and\n"
         "always saves the answer automatically.\n"
         "\n"
@@ -883,7 +883,7 @@ def _print_help_mcp() -> None:
         '  "mcpServers": {\n'
         '    "wiki": {\n'
         '      "command": "uv",\n'
-        f'      "args": ["run", "--project", "{vault_abs}", "wiki-mcp"]\n'
+        f'      "args": ["run", "--project", "/path/to/codebase_wikibuilder", "wiki-mcp", "--vault", "{vault_abs}"]\n'
         "    }\n"
         "  }\n"
         "}\n"

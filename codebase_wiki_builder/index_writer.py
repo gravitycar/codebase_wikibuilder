@@ -48,17 +48,20 @@ def rebuild_index(vault_root: Path, logger: logging.Logger) -> None:
     rows: list[tuple[str, str]] = []
     for page_path in sorted(pages):
         link = wikilink(page_path, vault_root)
-        desc = old_descriptions.get(_wikilink_target(link)) or _extract_description(page_path)
+        old_desc = old_descriptions.get(_wikilink_target(link))
+        desc = (old_desc if old_desc and old_desc != "(no description)" else None) or _extract_description(page_path)
         rows.append((link, desc))
 
     for page_path in sorted(overviews):
         link = wikilink(page_path, vault_root)
-        desc = old_descriptions.get(_wikilink_target(link)) or _overview_description(page_path, vault_root)
+        old_desc = old_descriptions.get(_wikilink_target(link))
+        desc = (old_desc if old_desc and old_desc != "(no description)" else None) or _overview_description(page_path, vault_root)
         rows.append((link, desc))
 
     for page_path in sorted(query_pages):
         link = wikilink(page_path, vault_root)
-        desc = old_descriptions.get(_wikilink_target(link)) or _extract_description(page_path)
+        old_desc = old_descriptions.get(_wikilink_target(link))
+        desc = (old_desc if old_desc and old_desc != "(no description)" else None) or _extract_description(page_path)
         rows.append((link, desc))
 
     # Step 4: Write index.md
@@ -184,8 +187,11 @@ def _extract_description(page_path: Path) -> str:
         if not stripped:
             continue
         if stripped.startswith("#"):
-            # Hit a section heading — stop
-            break
+            # Stop at ## References — nothing useful for descriptions past this point
+            if stripped.lstrip("#").strip().lower() == "references":
+                break
+            # Skip other section headings (e.g., ## ClassName) — prose follows beneath
+            continue
         return stripped[:120]
     return "(no description)"
 

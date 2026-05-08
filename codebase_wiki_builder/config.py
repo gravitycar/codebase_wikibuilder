@@ -29,6 +29,7 @@ class WikiConfig:
     llm_model: str = DEFAULT_MODEL_ANTHROPIC       # model name string
     file_size_threshold: int = DEFAULT_FILE_SIZE_THRESHOLD
     inter_request_delay: float = DEFAULT_INTER_REQUEST_DELAY
+    wiki_description: str = ""                     # optional: injected into MCP tool description
 
 
 def load_config(vault_root: Path) -> WikiConfig:
@@ -68,6 +69,7 @@ def load_config(vault_root: Path) -> WikiConfig:
         llm_model=raw.get("llm_model", DEFAULT_MODEL_ANTHROPIC),
         file_size_threshold=raw.get("file_size_threshold", DEFAULT_FILE_SIZE_THRESHOLD),
         inter_request_delay=raw.get("inter_request_delay", DEFAULT_INTER_REQUEST_DELAY),
+        wiki_description=str(raw.get("wiki_description", "")),
     )
     _validate(config, config_path)
     return config

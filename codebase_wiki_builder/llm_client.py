@@ -73,6 +73,8 @@ class LLMClient:
                     "Add it to your .env file in the vault root."
                 )
             self._openai_client = openai.OpenAI(api_key=api_key)
+            # o1/o3/o4/gpt-5.x series require max_completion_tokens, not max_tokens
+            self._use_max_completion_tokens = self._model.startswith(("o1", "o3", "o4", "gpt-5"))
         else:
             # Should never reach here — config validation rejects unknown providers
             raise LLMError(f"Unknown LLM provider: {self._provider!r}")
@@ -143,12 +145,16 @@ class LLMClient:
     def _call_openai(self, prompt: str) -> str:
         """Call the OpenAI Chat Completions API and return the response text."""
         import openai
+        kwargs: dict = {
+            "model": self._model,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if self._use_max_completion_tokens:
+            kwargs["max_completion_tokens"] = 8192
+        else:
+            kwargs["max_tokens"] = 8192
         try:
-            response = self._openai_client.chat.completions.create(
-                model=self._model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=8192,
-            )
+            response = self._openai_client.chat.completions.create(**kwargs)
             return response.choices[0].message.content or ""
         except openai.RateLimitError:
             raise  # Let tenacity handle retry

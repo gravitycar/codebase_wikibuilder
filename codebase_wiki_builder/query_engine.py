@@ -187,9 +187,16 @@ def _fill_context_budget(
         safe_rel = rel_path.lstrip("/")
         summary_path = vault_root / safe_rel
 
+        # Index wikilinks omit .md (Obsidian convention), so the LLM may return
+        # paths without it. Try appending .md if the bare path doesn't exist.
         if not summary_path.exists():
-            log.warning("Relevant summary not found in vault: %s", safe_rel)
-            continue
+            candidate = vault_root / (safe_rel + ".md")
+            if candidate.exists():
+                safe_rel = safe_rel + ".md"
+                summary_path = candidate
+            else:
+                log.warning("Relevant summary not found in vault: %s", safe_rel)
+                continue
 
         try:
             content = summary_path.read_text(encoding="utf-8")
