@@ -1,7 +1,7 @@
 # Specification: Query Cache — Have I Answered This Before?
 
 ## Document Metadata
-- **Version**: 1.3.0
+- **Version**: 1.4.0
 - **Author**: Architect Agent (MAPS)
 - **Created**: 2026-05-08
 - **Status**: Draft
@@ -101,7 +101,10 @@ The cache lookup SHALL proceed in two stages in sequence:
 4. The prompt SHALL instruct the LLM to return either:
    - The wikilink path of the single best-matching existing page (e.g., `queries/how-does-auth-work`) if it judges the existing page substantially answers the incoming question, OR
    - A sentinel value indicating no match (e.g., `none`).
-5. If the LLM returns a matching path:
+5. If the LLM returns a matching path, validate the path before opening any file on disk (SEC-3 path traversal fix). Perform all three checks in sequence; if any check fails, treat the result as a cache miss immediately — do not raise an error:
+   i. **Prefix check**: The returned path string must begin with `queries/`.
+   ii. **Containment check**: The resolved absolute path (`Path(vault_root / path).resolve()`) must be within `vault_root / "queries/"`, verified using `Path.is_relative_to()`.
+   iii. **Allowlist check**: The returned path (without the `.md` suffix) must be a member of the pre-computed set of valid wikilink targets already parsed from `index.md` (the same set used to build the Stage 2 prompt in step 1).
    a. `index.md` already stores full vault-relative wikilinks including numeric suffixes (e.g. `[[queries/how-does-auth-work-2]]`), so the returned path already encodes the exact file. Locate the file at `<vault>/<returned-path>.md` (appending `.md` to the wikilink path). Each row in `index.md` is a distinct file entry, and the LLM returns the specific path — no further suffix iteration is needed.
    b. Parse the file using `read_query_page()`.
    c. Proceed to the staleness check (FR-QC-3).
@@ -402,6 +405,12 @@ All 6 fields SHALL always be present in every `wiki_query` response. No existing
 
 14. **Stale warnings still surfaced on cache hit**: Given a vault with a non-stale matching saved page AND other stale pages listed in `index.md`. Run `codewiki query`. Verify: stale-page warnings for the OTHER stale pages are still printed to the CLI (as they would be in the non-cache path).
 
+15. **SEC-3 prefix check — path traversal rejected**: Mock the Stage 2 LLM to return a path that does NOT begin with `queries/` (e.g., `../sensitive/file` or `summaries/some-page`). Verify: (a) no file is opened on disk; (b) the result is treated as a cache miss; (c) the full two-LLM-call pipeline runs; (d) no exception propagates to the caller.
+
+16. **SEC-3 containment check — path traversal rejected**: Mock the Stage 2 LLM to return a path that begins with `queries/` but resolves outside `vault_root/queries/` after `Path.resolve()` (e.g., `queries/../../etc/passwd`). Verify: (a) no file is opened on disk; (b) the result is treated as a cache miss; (c) the full pipeline runs; (d) no exception propagates.
+
+17. **SEC-3 allowlist check — unlisted path rejected**: Mock the Stage 2 LLM to return a syntactically valid path (begins with `queries/`, resolves within `vault_root/queries/`) that is NOT present in the pre-computed set of wikilink targets from `index.md`. Verify: (a) no file is opened on disk; (b) the result is treated as a cache miss; (c) the full pipeline runs; (d) no exception propagates.
+
 ---
 
 ## Open Questions
@@ -474,6 +483,7 @@ The prompt wording SHALL reflect both conditions explicitly, instructing the LLM
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.4.0 | 2026-05-08 | Architect Agent | SEC-3 path traversal fix: add mandatory 3-part path validation step (prefix check, containment check, allowlist check) in FR-QC-2 Stage 2 immediately after LLM response and before any file is opened; validation failures are silent cache misses. Add acceptance tests AT-15, AT-16, AT-17 covering each SEC-3 check. |
 | 1.3.0 | 2026-05-08 | Architect Agent | Resolve all open questions: OQ-1 (same llm_client for Stage 2); OQ-2 (conservative Stage 2 prompt, both conditions explicit, false negatives preferred); OQ-3 (cached_at=null if saved_at missing, not a miss). Incorporate critic observations: OBS-1 (log_fn typed as Callable[[str], None]); OBS-2 (FR-QC-5 step 3 credits check_query_cache() for from_cache=True); OBS-3 (cache-hit log entry format specified as {timestamp} \| cache-hit \| {question} \| {cached_path}) |
 | 1.2.0 | 2026-05-08 | Architect Agent | Incorporate Round 2 Q&A: `cached_path` and `cached_at` added to `QueryResult` (NQ-1); `write_query_log_entry()` standalone helper in `query_persistence.py` (NQ-2); `_parse_existing_index()` renamed to `parse_existing_index()` public (NQ-3); Stage 2 reads actual H1 titles from disk (normative), OQ-1 removed (NQ-4) |
 | 1.1.0 | 2026-05-08 | Architect Agent | Incorporate Round 1 Q&A: Stage 1 calls slugify() directly (Q-1); stale primary = full miss, no sibling fallback (Q-2); clarifying note on index.md numeric suffix wikilinks (Q-3); `_has_stale_banner` renamed to `has_stale_banner` public (Q-4); empty slug skips Stage 1 entirely (Q-5); MCP log entry for cache hits with cache-hit marker (Q-6); all 6 MCP fields always present (Q-7); `check_query_cache` function signature defined (Q-8); answer field is verbatim raw file content (Q-9) |
