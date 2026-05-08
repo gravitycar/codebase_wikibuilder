@@ -160,6 +160,9 @@ class TestRunQueryHappyPath:
 
         mock_llm = MagicMock()
         mock_llm.complete.side_effect = [
+            # Stage 2 LLM pre-check consumes one response (queries dir has a file)
+            "NO_MATCH",
+            # Full pipeline: relevance call + answer call
             '["src/utils.py.md"]',
             json.dumps({
                 "answer": "Utilities answer.",

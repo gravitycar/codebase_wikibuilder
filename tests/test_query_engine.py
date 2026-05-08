@@ -361,3 +361,76 @@ class TestRunQuery:
         assert "src/c.py.md" not in result.sources
         assert "src/a.py.md" in result.sources
         assert "src/b.py.md" in result.sources
+
+
+# ---------------------------------------------------------------------------
+# QueryResult cache fields
+# ---------------------------------------------------------------------------
+
+class TestQueryResultCacheFields:
+    """Tests for the three new cache-related fields on QueryResult."""
+
+    def _make_minimal(self, **kwargs) -> QueryResult:
+        """Helper: construct a QueryResult with minimum required positional fields."""
+        return QueryResult(
+            answer="The answer.",
+            sources=["src/auth.py.md"],
+            one_line_summary="Explains auth.",
+            **kwargs,
+        )
+
+    def test_from_cache_defaults_to_false(self):
+        result = self._make_minimal()
+        assert result.from_cache is False
+
+    def test_cached_path_defaults_to_none(self):
+        result = self._make_minimal()
+        assert result.cached_path is None
+
+    def test_cached_at_defaults_to_none(self):
+        result = self._make_minimal()
+        assert result.cached_at is None
+
+    def test_from_cache_can_be_set_true(self):
+        result = self._make_minimal(from_cache=True)
+        assert result.from_cache is True
+
+    def test_cached_path_accepts_path_object(self):
+        p = Path("queries/how-does-auth-work.md")
+        result = self._make_minimal(cached_path=p)
+        assert result.cached_path == p
+
+    def test_cached_at_accepts_string(self):
+        ts = "2026-04-29 10:00:00 UTC"
+        result = self._make_minimal(cached_at=ts)
+        assert result.cached_at == ts
+
+    def test_existing_fields_unaffected(self):
+        """Constructing QueryResult without cache fields works as before (AT-10)."""
+        result = QueryResult(
+            answer="Answer text.",
+            sources=["src/x.py.md"],
+            one_line_summary="One line.",
+        )
+        assert result.answer == "Answer text."
+        assert result.sources == ["src/x.py.md"]
+        assert result.one_line_summary == "One line."
+        assert result.stale_warnings == []
+        assert result.from_cache is False
+        assert result.cached_path is None
+        assert result.cached_at is None
+
+    def test_full_cache_hit_construction(self):
+        """All three cache fields set together — the shape check_query_cache() will use."""
+        result = QueryResult(
+            answer="Verbatim file content...",
+            sources=["src/auth.py.md"],
+            one_line_summary="Explains auth.",
+            stale_warnings=[],
+            from_cache=True,
+            cached_path=Path("queries/how-does-auth-work.md"),
+            cached_at="2026-04-29 10:00:00 UTC",
+        )
+        assert result.from_cache is True
+        assert result.cached_path == Path("queries/how-does-auth-work.md")
+        assert result.cached_at == "2026-04-29 10:00:00 UTC"

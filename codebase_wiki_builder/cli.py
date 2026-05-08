@@ -467,7 +467,7 @@ def _run_query_command(question: str, vault_root: Path) -> None:
     from codebase_wiki_builder.llm_client import LLMClient, LLMError
     from codebase_wiki_builder.logging_setup import setup_logging, append_log_md
     from codebase_wiki_builder.query_engine import run_query, NoRelevantFilesError
-    from codebase_wiki_builder.query_persistence import save_query_page
+    from codebase_wiki_builder.query_persistence import save_query_page, write_query_log_entry
     from datetime import datetime, timezone
 
     console = Console()
@@ -511,26 +511,51 @@ def _run_query_command(question: str, vault_root: Path) -> None:
             "run codewiki lint to update.[/yellow]"
         )
 
-    # 6. Print the answer
+    # 6. Cache hit path — attribution line, skip save prompt, write log, exit
+    if result.from_cache:
+        # 6a. Print cache attribution before the answer
+        cached_at_str = result.cached_at or "unknown"
+        console.print(
+            f"[cache] Answering from saved page: {result.cached_path} (saved {cached_at_str})",
+            markup=False,
+        )
+
+        # 6b. Print the answer (same as fresh query)
+        console.print(result.answer)
+
+        # 6c. Skip save prompt entirely — page already exists
+
+        # 6d. Write log entry with cache_hit=True
+        write_query_log_entry(
+            question,
+            vault_root,
+            log_fn,
+            cache_hit=True,
+            cached_path=str(result.cached_path),
+        )
+
+        raise typer.Exit(code=0)
+
+    # 7. Fresh query path — print the answer
     console.print(result.answer)
 
-    # 7. Prompt user to save (default No)
+    # 8. Prompt user to save (default No)
     save = _prompt_save()
 
-    # 8. Optionally save the query page
+    # 9. Optionally save the query page
     if save:
         saved_path = save_query_page(question, result, vault_root, log_fn)
         rel = saved_path.relative_to(vault_root).as_posix()
         console.print(f"[green]Answer saved to {rel}[/green]")
 
-    # 9. Append per-query log.md entry (FR-6.1)
+    # 10. Append per-query log.md entry (FR-6.1)
     ts = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     sources_summary = ", ".join(result.sources[:5])
     if len(result.sources) > 5:
         sources_summary += f" (and {len(result.sources) - 5} more)"
     log_fn(f"{ts} | query | {question} | sources: {sources_summary}")
 
-    # 10. Exit 0 — normal completion
+    # 11. Exit 0 — normal completion
     raise typer.Exit(code=0)
 
 

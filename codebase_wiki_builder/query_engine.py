@@ -29,6 +29,8 @@ if TYPE_CHECKING:
     from codebase_wiki_builder.config import WikiConfig
     from codebase_wiki_builder.llm_client import LLMClient
 
+from codebase_wiki_builder.query_cache import check_query_cache
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -85,6 +87,17 @@ class QueryResult:
 
     stale_warnings: list[str] = field(default_factory=list)
     """Vault-relative paths of query pages currently flagged as stale. Empty list if none."""
+
+    from_cache: bool = False
+    """True if the result was returned from a saved page without running LLM calls."""
+
+    cached_path: Path | None = None
+    """Vault-relative path of the matched cache page (e.g. Path("queries/how-does-auth-work.md")).
+    None on fresh (non-cached) results."""
+
+    cached_at: str | None = None
+    """The saved_at timestamp string from the matched page's ## Page Metadata section.
+    None on fresh results, or when saved_at is absent/unparseable in the cached page."""
 
 
 # ---------------------------------------------------------------------------
@@ -337,6 +350,8 @@ def run_query(
     Steps:
       1. Check index.md exists (raises FileNotFoundError if not).
       2. Read index.md; collect stale_warnings.
+      2.5. Cache pre-check: call check_query_cache(). If a non-stale cached answer is
+           found, copy stale_warnings into the result and return immediately.
       3. First LLM call: identify relevant files as JSON array sorted by relevance descending.
       4. Raise NoRelevantFilesError if LLM returns empty array.
       5. Fill context budget using tiktoken (QUERY_CONTEXT_WINDOW = 128_000 tokens).
@@ -361,6 +376,12 @@ def run_query(
     # Step 2: Read index.md, collect stale warnings (must run BEFORE LLM calls)
     index_content = index_path.read_text(encoding="utf-8")
     stale_warnings = _collect_stale_warnings(index_content)
+
+    # Step 2.5: Cache pre-check — return saved answer if available and not stale
+    cache_result = check_query_cache(question, vault_root, index_content, llm_client, config)
+    if cache_result is not None:
+        cache_result.stale_warnings = stale_warnings
+        return cache_result
 
     # Step 3: First LLM call — relevance identification
     # LLMError propagates to caller on fatal failure

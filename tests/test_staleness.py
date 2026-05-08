@@ -11,7 +11,7 @@ import pytest
 from codebase_wiki_builder.scanner import ChangeSet
 from codebase_wiki_builder.staleness import (
     StalenessResult,
-    _has_stale_banner,
+    has_stale_banner,
     _insert_stale_banner,
     _annotate_index_row,
     _parse_sources_section,
@@ -77,23 +77,23 @@ class TestParseSourcesSection:
 
 
 # ---------------------------------------------------------------------------
-# _has_stale_banner
+# has_stale_banner
 # ---------------------------------------------------------------------------
 
 class TestHasStaleBanner:
     def test_no_banner(self):
         content = "# Query\n\nAnswer\n"
-        assert _has_stale_banner(content) is False
+        assert has_stale_banner(content) is False
 
     def test_detects_stale_banner(self):
         content = "# Query\n\n> [!warning] Stale Content\n> Sources changed\n\nAnswer\n"
-        assert _has_stale_banner(content) is True
+        assert has_stale_banner(content) is True
 
     def test_case_sensitive(self):
         # The banner check is for the exact pattern
         content = "# Query\n\n> [!warning] stale content\n"
         # lowercase 'stale content' — regex is case-sensitive on 'Stale Content'
-        assert _has_stale_banner(content) is False
+        assert has_stale_banner(content) is False
 
 
 # ---------------------------------------------------------------------------

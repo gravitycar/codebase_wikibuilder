@@ -7,6 +7,7 @@ Public API:
   - QueryPage: dataclass representing a parsed saved query page (for lint use)
   - save_query_page(): persist a query result to queries/<slug>.md
   - read_query_page(): parse an existing saved query page into a QueryPage
+  - write_query_log_entry(): write a query log entry to log.md (fresh or cache-hit)
 
 No typer or rich imports — this is a pure persistence/utility module usable
 by both the CLI and MCP server.
@@ -120,7 +121,13 @@ def save_query_page(
     _append_index_row(vault_root, page_path, result.one_line_summary, logger)
 
     # 4. Log query-saved entry
-    _write_log_entry(question, page_path, vault_root, timestamp, log_fn)
+    write_query_log_entry(
+        question=question,
+        vault_root=vault_root,
+        log_fn=log_fn,
+        cache_hit=False,
+        cached_path=page_path.relative_to(vault_root).as_posix(),
+    )
 
     return page_path
 
@@ -273,19 +280,43 @@ def _append_index_row(
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers — log entry
+# Public helper — log entry
 # ---------------------------------------------------------------------------
 
-def _write_log_entry(
+def write_query_log_entry(
     question: str,
-    page_path: Path,
     vault_root: Path,
-    timestamp: str,
     log_fn: Callable[[str], None],
+    cache_hit: bool = False,
+    cached_path: str | None = None,
 ) -> None:
-    """Write a query-saved entry to log.md via the provided log_fn callable."""
-    rel_path = page_path.relative_to(vault_root).as_posix()
-    log_fn(f"{timestamp} | query-saved | {question} → {rel_path}")
+    """Write a query log entry to log.md via the provided log_fn callable.
+
+    On cache_hit=False (fresh query):
+        Format: {timestamp} | query-saved | {question} → {cached_path}
+        where cached_path is the vault-relative path of the newly saved page.
+
+    On cache_hit=True:
+        Format: {timestamp} | cache-hit | {question} | {cached_path}
+        where cached_path is the vault-relative path of the matched cached page.
+
+    Args:
+        question:    The user's original question.
+        vault_root:  Absolute path to the vault root (unused at runtime; reserved for
+                     future use and signature symmetry with save_query_page()).
+        log_fn:      Callable that accepts a pre-formatted log entry string.
+        cache_hit:   False for fresh saves; True for cache-hit entries.
+        cached_path: Vault-relative path string of the relevant page.
+                     - Fresh: the newly saved page (e.g. "queries/how-does-auth-work.md").
+                     - Cache hit: the matched existing page.
+                     May be None if the path is unavailable; the entry is still written.
+    """
+    timestamp = _utc_now()
+    path_str = cached_path or ""
+    if cache_hit:
+        log_fn(f"{timestamp} | cache-hit | {question} | {path_str}")
+    else:
+        log_fn(f"{timestamp} | query-saved | {question} → {path_str}")
 
 
 # ---------------------------------------------------------------------------

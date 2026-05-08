@@ -13,7 +13,7 @@ from codebase_wiki_builder.index_writer import (
     _collect_summary_pages,
     _extract_description,
     _overview_description,
-    _parse_existing_index,
+    parse_existing_index,
     _write_index,
 )
 
@@ -124,7 +124,7 @@ class TestParseExistingIndex:
     def test_returns_empty_when_no_index(self, tmp_path):
         vault = tmp_path / "vault"
         vault.mkdir()
-        result = _parse_existing_index(vault)
+        result = parse_existing_index(vault)
         assert result == {}
 
     def test_parses_description(self, tmp_path):
@@ -136,7 +136,7 @@ class TestParseExistingIndex:
             "| [[src/auth.py]] | Handles JWT |\n",
             encoding="utf-8",
         )
-        result = _parse_existing_index(vault)
+        result = parse_existing_index(vault)
         assert result.get("src/auth.py") == "Handles JWT"
 
     def test_parses_stale_annotation(self, tmp_path):
@@ -146,7 +146,7 @@ class TestParseExistingIndex:
             "| [[queries/how-auth-works]] | Explains auth ⚠ stale |\n",
             encoding="utf-8",
         )
-        result = _parse_existing_index(vault)
+        result = parse_existing_index(vault)
         assert "⚠ stale" in result.get("queries/how-auth-works", "")
 
 

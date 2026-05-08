@@ -178,7 +178,7 @@ def _normalize_source(source: str) -> str:
     return source.strip().replace("\\", "/")
 
 
-def _has_stale_banner(content: str) -> bool:
+def has_stale_banner(content: str) -> bool:
     """Return True if the content already contains a stale callout banner."""
     return bool(_STALE_BANNER_RE.search(content))
 
@@ -339,7 +339,7 @@ def _process_query_page(
         return
 
     # Step 3 — Check for existing stale banner (AT-23: no duplicate banner)
-    if _has_stale_banner(content):
+    if has_stale_banner(content):
         logger.debug("Query page %s already has stale banner; skipping", query_page.name)
         result.already_stale_pages.append(query_page)
         return

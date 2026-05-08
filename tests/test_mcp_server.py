@@ -191,7 +191,7 @@ class TestHandleWikiQuerySuccess:
             ))
 
         response_obj = json.loads(result[0].text)
-        assert response_obj["stale_warning"] == ["queries/old-query.md"]
+        assert response_obj["stale_warnings"] == ["queries/old-query.md"]
 
     def test_response_stale_warning_null_when_no_warnings(self, tmp_path):
         vault = tmp_path / "vault"
@@ -213,7 +213,7 @@ class TestHandleWikiQuerySuccess:
             ))
 
         response_obj = json.loads(result[0].text)
-        assert response_obj["stale_warning"] is None
+        assert response_obj["stale_warnings"] == []
 
 
 # ---------------------------------------------------------------------------

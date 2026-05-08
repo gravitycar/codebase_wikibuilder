@@ -37,7 +37,7 @@ def rebuild_index(vault_root: Path, logger: logging.Logger) -> None:
     - All query pages under queries/
     """
     # Step 1: Read old index to carry forward query descriptions and stale annotations
-    old_descriptions = _parse_existing_index(vault_root)
+    old_descriptions = parse_existing_index(vault_root)
 
     # Step 2: Collect all wiki pages
     pages = _collect_summary_pages(vault_root)       # source summaries
@@ -72,7 +72,7 @@ def rebuild_index(vault_root: Path, logger: logging.Logger) -> None:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _parse_existing_index(vault_root: Path) -> dict[str, str]:
+def parse_existing_index(vault_root: Path) -> dict[str, str]:
     """Read existing index.md and return a wikilink_target → description mapping.
 
     Returns empty dict if index.md does not exist or has no table.

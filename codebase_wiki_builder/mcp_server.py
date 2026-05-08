@@ -30,7 +30,7 @@ from codebase_wiki_builder.config import WikiConfig, load_config
 from codebase_wiki_builder.llm_client import LLMClient, LLMError
 from codebase_wiki_builder.logging_setup import append_log_md, setup_logging
 from codebase_wiki_builder.query_engine import NoRelevantFilesError, run_query
-from codebase_wiki_builder.query_persistence import save_query_page
+from codebase_wiki_builder.query_persistence import save_query_page, write_query_log_entry
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +67,10 @@ def _build_tool(wiki_description: str = "") -> mcp.types.Tool:
         description=description,
         inputSchema=_WIKI_QUERY_TOOL_SCHEMA,
     )
+
+
+# Module-level Tool instance (used by tests and callers that need the bare definition)
+WIKI_QUERY_TOOL: mcp.types.Tool = _build_tool()
 
 # ── MCP server instance ──────────────────────────────────────────────────────
 
@@ -123,9 +127,19 @@ async def _handle_wiki_query(
 ) -> list[mcp.types.TextContent]:
     """MCP tool handler for wiki_query.
 
-    Always saves the query result automatically.
-    Returns a list containing a single TextContent with a JSON-encoded response object.
-    Raises McpError for all error conditions (invalid params, query failures, save failures).
+    On a cache hit (result.from_cache is True):
+      - Skips save_query_page().
+      - Calls write_query_log_entry() with cache_hit=True.
+      - Returns all 7 fields with cache_hit=True and the cached_at timestamp.
+
+    On a fresh query (result.from_cache is False):
+      - Saves automatically via save_query_page().
+      - Returns all 7 fields with cache_hit=False and cached_at=null.
+
+    Always returns a list containing a single TextContent with a JSON-encoded response
+    object containing all 7 fields: answer, saved_path, stale_warnings, cache_hit,
+    cached_at, one_line_summary, sources.
+    Raises McpError for all error conditions (invalid params, query failures, save/log failures).
     """
     # Step 1 — Validate parameters: reject unknown keys
     known_keys = {"question"}
@@ -185,27 +199,53 @@ async def _handle_wiki_query(
             )
         ) from exc
 
-    # Step 4 — Save automatically via save_query_page()
-    try:
-        saved_path = save_query_page(question, result, vault_root, log_fn)
-        saved_path_str = saved_path.relative_to(vault_root).as_posix()
-    except Exception as exc:
-        logger.exception("Failed to save query page: %s", exc)
-        raise mcp.shared.exceptions.McpError(
-            mcp.types.ErrorData(
-                code=mcp.types.INTERNAL_ERROR,
-                message=f"Answer generated but failed to save: {exc}",
+    # Step 4 — Branch on cache hit vs fresh query
+    if result.from_cache:
+        # Cache hit: skip save, just log and return the cached result
+        saved_path_str = str(result.cached_path) if result.cached_path is not None else ""
+        try:
+            write_query_log_entry(
+                question=question,
+                vault_root=vault_root,
+                log_fn=log_fn,
+                cache_hit=True,
+                cached_path=saved_path_str,
             )
-        ) from exc
+        except Exception as exc:
+            logger.exception("Failed to write cache-hit log entry: %s", exc)
+            raise mcp.shared.exceptions.McpError(
+                mcp.types.ErrorData(
+                    code=mcp.types.INTERNAL_ERROR,
+                    message=f"Cache hit but failed to write log: {exc}",
+                )
+            ) from exc
+        cache_hit_flag = True
+        cached_at_value = result.cached_at  # str | None
+    else:
+        # Fresh query: save automatically via save_query_page()
+        try:
+            saved_page = save_query_page(question, result, vault_root, log_fn)
+            saved_path_str = saved_page.relative_to(vault_root).as_posix()
+        except Exception as exc:
+            logger.exception("Failed to save query page: %s", exc)
+            raise mcp.shared.exceptions.McpError(
+                mcp.types.ErrorData(
+                    code=mcp.types.INTERNAL_ERROR,
+                    message=f"Answer generated but failed to save: {exc}",
+                )
+            ) from exc
+        cache_hit_flag = False
+        cached_at_value = None
 
-    # Step 5 — Build and return JSON response
-    stale_warning = result.stale_warnings if result.stale_warnings else None
-
+    # Step 5 — Build and return JSON response (always 7 fields)
     response_obj = {
         "answer": result.answer,
-        "sources": result.sources,
         "saved_path": saved_path_str,
-        "stale_warning": stale_warning,
+        "stale_warnings": result.stale_warnings if result.stale_warnings else [],
+        "cache_hit": cache_hit_flag,
+        "cached_at": cached_at_value,
+        "one_line_summary": result.one_line_summary,
+        "sources": result.sources if result.sources else [],
     }
 
     return [mcp.types.TextContent(type="text", text=json.dumps(response_obj, ensure_ascii=False))]
