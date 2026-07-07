@@ -40,7 +40,7 @@ logger = logging.getLogger("test_integration_cache")
 
 def make_config(codebase_path: Path) -> WikiConfig:
     return WikiConfig(
-        codebase_path=str(codebase_path),
+        codebase_path=[str(codebase_path)],
         llm_provider="anthropic",
         llm_model="claude-sonnet-4-6",
         file_size_threshold=100_000,

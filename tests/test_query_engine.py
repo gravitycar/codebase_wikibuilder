@@ -275,7 +275,7 @@ class TestBuildAnswerPromptFStringSafety:
 class TestRunQuery:
     def _make_config(self, codebase_path: str):
         from codebase_wiki_builder.config import WikiConfig
-        return WikiConfig(codebase_path=codebase_path)
+        return WikiConfig(codebase_path=[codebase_path])
 
     def test_raises_file_not_found_when_no_index(self, tmp_path):
         vault = tmp_path / "vault"

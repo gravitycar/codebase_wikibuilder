@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -24,12 +25,34 @@ load_dotenv(override=False)
 
 @dataclass
 class WikiConfig:
-    codebase_path: str                             # absolute path to target codebase
-    llm_provider: str = DEFAULT_PROVIDER           # "anthropic" | "openai"
-    llm_model: str = DEFAULT_MODEL_ANTHROPIC       # model name string
+    codebase_path: list[str] = field(default_factory=list)  # files and/or directories to ingest
+    llm_provider: str = DEFAULT_PROVIDER                     # "anthropic" | "openai"
+    llm_model: str = DEFAULT_MODEL_ANTHROPIC                 # model name string
     file_size_threshold: int = DEFAULT_FILE_SIZE_THRESHOLD
     inter_request_delay: float = DEFAULT_INTER_REQUEST_DELAY
-    wiki_description: str = ""                     # optional: injected into MCP tool description
+    wiki_description: str = ""                               # optional: injected into MCP tool description
+
+
+def get_codebase_root(config: WikiConfig) -> Path:
+    """Return the common ancestor directory of all codebase_path entries.
+
+    For a single directory entry, returns that directory. For a single file
+    entry, returns its parent. For multiple entries, returns the deepest
+    directory that contains all of them.
+    """
+    paths = config.codebase_path
+    resolved = [Path(p).resolve() for p in paths]
+
+    # Convert files → parent dir; keep directories as-is; treat nonexistent → as-is
+    dir_paths = [
+        str(p if (p.is_dir() or not p.exists()) else p.parent)
+        for p in resolved
+    ]
+
+    if len(dir_paths) == 1:
+        return Path(dir_paths[0])
+
+    return Path(os.path.commonpath(dir_paths))
 
 
 def load_config(vault_root: Path) -> WikiConfig:
@@ -62,9 +85,16 @@ def load_config(vault_root: Path) -> WikiConfig:
         )
         sys.exit(1)
 
+    # Normalize codebase_path: accept legacy string or new list format
+    raw_codebase = raw.get("codebase_path", [])
+    if isinstance(raw_codebase, str):
+        raw_codebase = [raw_codebase] if raw_codebase else []
+    elif not isinstance(raw_codebase, list):
+        raw_codebase = []
+
     # Merge defaults before validation
     config = WikiConfig(
-        codebase_path=raw.get("codebase_path", ""),
+        codebase_path=raw_codebase,
         llm_provider=raw.get("llm_provider", DEFAULT_PROVIDER),
         llm_model=raw.get("llm_model", DEFAULT_MODEL_ANTHROPIC),
         file_size_threshold=raw.get("file_size_threshold", DEFAULT_FILE_SIZE_THRESHOLD),
@@ -78,21 +108,28 @@ def load_config(vault_root: Path) -> WikiConfig:
 def _validate(config: WikiConfig, config_path: Path) -> None:
     if not config.codebase_path:
         print(
-            f"Config error: {config_path}: required field 'codebase_path' is missing. "
-            "Expected: absolute path string.",
+            f"Config error: {config_path}: required field 'codebase_path' is missing or empty. "
+            "Expected: a list of one or more absolute paths (files or directories).",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    codebase = Path(config.codebase_path)
-    if not codebase.is_dir():
-        print(
-            f"Config error: {config_path}: field 'codebase_path' = "
-            f"'{config.codebase_path}' is not a readable directory. "
-            "Expected: absolute path to an existing, readable directory.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    for path_str in config.codebase_path:
+        p = Path(path_str)
+        if not p.exists():
+            print(
+                f"Config error: {config_path}: 'codebase_path' entry "
+                f"'{path_str}' does not exist.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        if not (p.is_file() or p.is_dir()):
+            print(
+                f"Config error: {config_path}: 'codebase_path' entry "
+                f"'{path_str}' is not a readable file or directory.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     if config.llm_provider not in SUPPORTED_PROVIDERS:
         print(
@@ -143,18 +180,71 @@ def prompt_for_config(vault_root: Path) -> WikiConfig:
     print("No configuration file found. Let's set up your wiki.")
     print(f"Config will be saved to: {vault_root / CONFIG_FILENAME}\n")
 
+    # --- Step 1: codebase paths ---
+    print("Step 1: Enter one or more paths to ingest (files or directories).")
+    print("        Press Enter with no input when you are done.\n")
+    collected: list[str] = []
     while True:
-        raw_path = input("Enter the absolute path to your target codebase: ").strip()
+        prompt = f"  Path {len(collected) + 1}: " if not collected else f"  Path {len(collected) + 1} (or Enter to finish): "
+        raw_path = input(prompt).strip()
         if not raw_path:
-            print("  Path cannot be empty. Please try again.")
+            if not collected:
+                print("  At least one path is required. Please try again.")
+                continue
+            break
+        p = Path(raw_path)
+        if not p.exists():
+            print(f"  '{raw_path}' does not exist. Please try again.")
             continue
-        codebase = Path(raw_path)
-        if not codebase.is_dir():
-            print(f"  '{raw_path}' is not a readable directory. Please try again.")
+        if not (p.is_file() or p.is_dir()):
+            print(f"  '{raw_path}' is not a file or directory. Please try again.")
             continue
-        break
+        collected.append(str(p.resolve()))
 
-    config = WikiConfig(codebase_path=str(codebase.resolve()))
+    # --- Step 2: LLM provider ---
+    print(f"\nStep 2: Choose an LLM provider.")
+    providers_display = " / ".join(f"[{i+1}] {p}" for i, p in enumerate(SUPPORTED_PROVIDERS))
+    provider = DEFAULT_PROVIDER
+    while True:
+        raw = input(f"  Provider ({providers_display}, default: {DEFAULT_PROVIDER}): ").strip().lower()
+        if not raw:
+            break
+        if raw in SUPPORTED_PROVIDERS:
+            provider = raw
+            break
+        # Accept numeric shortcut
+        try:
+            idx = int(raw) - 1
+            if 0 <= idx < len(SUPPORTED_PROVIDERS):
+                provider = SUPPORTED_PROVIDERS[idx]
+                break
+        except ValueError:
+            pass
+        print(f"  Invalid choice. Enter one of: {', '.join(SUPPORTED_PROVIDERS)}")
+
+    # --- Step 3: model name ---
+    default_model = DEFAULT_MODEL_ANTHROPIC if provider == "anthropic" else DEFAULT_MODEL_OPENAI
+    print(f"\nStep 3: Enter the model name (default: {default_model}).")
+    model = default_model
+    while True:
+        raw = input(f"  Model: ").strip()
+        if not raw:
+            break
+        if raw:
+            model = raw
+            break
+
+    # --- Step 4: wiki description ---
+    print("\nStep 4: Enter a brief description for this wiki.")
+    print("        This is shown to coding agents by the MCP server (optional, press Enter to skip).")
+    wiki_description = input("  Description: ").strip()
+
+    config = WikiConfig(
+        codebase_path=collected,
+        llm_provider=provider,
+        llm_model=model,
+        wiki_description=wiki_description,
+    )
     save_config(config, vault_root)
-    print(f"Configuration saved to {vault_root / CONFIG_FILENAME}\n")
+    print(f"\nConfiguration saved to {vault_root / CONFIG_FILENAME}\n")
     return config

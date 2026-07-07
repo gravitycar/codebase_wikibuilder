@@ -114,7 +114,7 @@ The generated `.wiki-config.json` looks like this (edit it to change the model o
 
 ```json
 {
-  "codebase_path": "/path/to/my-project",
+  "codebase_path": ["/path/to/my-project"],
   "llm_provider": "anthropic",
   "llm_model": "claude-sonnet-4-6",
   "file_size_threshold": 100000,
@@ -122,9 +122,23 @@ The generated `.wiki-config.json` looks like this (edit it to change the model o
 }
 ```
 
+To ingest multiple directories or specific files, use an array with multiple entries:
+
+```json
+{
+  "codebase_path": [
+    "/path/to/my-project/src",
+    "/path/to/my-project/frontend",
+    "/path/to/my-project/config.php"
+  ]
+}
+```
+
+Legacy single-string values (`"codebase_path": "/some/dir"`) are still accepted and automatically converted to a one-element list.
+
 | Field | Description | Default |
 |---|---|---|
-| `codebase_path` | Absolute path to the codebase to scan | (required) |
+| `codebase_path` | List of absolute paths (files and/or directories) to ingest | (required) |
 | `llm_provider` | `"anthropic"` or `"openai"` | `"anthropic"` |
 | `llm_model` | Model name string | `"claude-sonnet-4-6"` |
 | `file_size_threshold` | Max file size in bytes; larger files are skipped | `100000` |

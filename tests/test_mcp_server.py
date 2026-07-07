@@ -70,7 +70,7 @@ class TestHandleWikiQueryValidation:
         self.vault_root.mkdir()
         (self.vault_root / "index.md").write_text("| File | Desc |\n", encoding="utf-8")
         from codebase_wiki_builder.config import WikiConfig
-        self.config = WikiConfig(codebase_path=self.tmp)
+        self.config = WikiConfig(codebase_path=[self.tmp])
         self.llm = MagicMock()
         self.log_fn = make_log_fn()
 
@@ -138,7 +138,7 @@ class TestHandleWikiQuerySuccess:
         self.vault_root = Path(self.tmp) / "vault"
         self.vault_root.mkdir()
         from codebase_wiki_builder.config import WikiConfig
-        self.config = WikiConfig(codebase_path=self.tmp)
+        self.config = WikiConfig(codebase_path=[self.tmp])
         self.log_fn = make_log_fn()
 
     def _run(self, coro):
@@ -151,7 +151,7 @@ class TestHandleWikiQuerySuccess:
 
         query_result = make_query_result()
         from codebase_wiki_builder.config import WikiConfig
-        config = WikiConfig(codebase_path=str(tmp_path))
+        config = WikiConfig(codebase_path=[str(tmp_path)])
 
         with patch("codebase_wiki_builder.mcp_server.run_query", return_value=query_result), \
              patch("codebase_wiki_builder.mcp_server.save_query_page",
@@ -177,7 +177,7 @@ class TestHandleWikiQuerySuccess:
 
         query_result = make_query_result(stale_warnings=["queries/old-query.md"])
         from codebase_wiki_builder.config import WikiConfig
-        config = WikiConfig(codebase_path=str(tmp_path))
+        config = WikiConfig(codebase_path=[str(tmp_path)])
 
         with patch("codebase_wiki_builder.mcp_server.run_query", return_value=query_result), \
              patch("codebase_wiki_builder.mcp_server.save_query_page",
@@ -199,7 +199,7 @@ class TestHandleWikiQuerySuccess:
 
         query_result = make_query_result(stale_warnings=[])
         from codebase_wiki_builder.config import WikiConfig
-        config = WikiConfig(codebase_path=str(tmp_path))
+        config = WikiConfig(codebase_path=[str(tmp_path)])
 
         with patch("codebase_wiki_builder.mcp_server.run_query", return_value=query_result), \
              patch("codebase_wiki_builder.mcp_server.save_query_page",
@@ -228,7 +228,7 @@ class TestHandleWikiQueryErrors:
         vault = tmp_path / "vault"
         vault.mkdir()
         from codebase_wiki_builder.config import WikiConfig
-        config = WikiConfig(codebase_path=str(tmp_path))
+        config = WikiConfig(codebase_path=[str(tmp_path)])
 
         with patch("codebase_wiki_builder.mcp_server.run_query",
                    side_effect=NoRelevantFilesError("no files")):
@@ -246,7 +246,7 @@ class TestHandleWikiQueryErrors:
         vault = tmp_path / "vault"
         vault.mkdir()
         from codebase_wiki_builder.config import WikiConfig
-        config = WikiConfig(codebase_path=str(tmp_path))
+        config = WikiConfig(codebase_path=[str(tmp_path)])
 
         with patch("codebase_wiki_builder.mcp_server.run_query",
                    side_effect=LLMError("API down")):

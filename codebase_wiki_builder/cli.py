@@ -187,7 +187,8 @@ def _run_phase2(
     from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
     console = Console()
-    codebase_root = Path(config.codebase_path)
+    from codebase_wiki_builder.config import get_codebase_root
+    codebase_root = get_codebase_root(config)
     failed_files: list[Path] = []
 
     # Build LLM client (instantiated once; manages inter-request delay internally)

@@ -18,7 +18,7 @@ logger = logging.getLogger("test_scanner")
 
 def make_config(codebase_path: str, file_size_threshold: int = 100_000) -> WikiConfig:
     return WikiConfig(
-        codebase_path=codebase_path,
+        codebase_path=[codebase_path],
         file_size_threshold=file_size_threshold,
     )
 
@@ -300,3 +300,72 @@ class TestScanCodebaseExcludedDirs:
         cs = scan_codebase(config, vault, logger)
 
         assert cs.new_files == []
+
+
+# ---------------------------------------------------------------------------
+# scan_codebase — multiple paths
+# ---------------------------------------------------------------------------
+
+class TestScanCodebaseMultiplePaths:
+    def test_two_directories_both_scanned(self, tmp_path):
+        dir_a = tmp_path / "src"
+        dir_b = tmp_path / "frontend"
+        dir_a.mkdir()
+        dir_b.mkdir()
+        vault = tmp_path / "vault"
+        vault.mkdir()
+        (dir_a / "api.py").write_text("# api", encoding="utf-8")
+        (dir_b / "App.vue").write_text("<template/>", encoding="utf-8")
+
+        config = WikiConfig(codebase_path=[str(dir_a), str(dir_b)])
+        cs = scan_codebase(config, vault, logger)
+
+        names = {f.name for f in cs.new_files}
+        assert names == {"api.py", "App.vue"}
+
+    def test_specific_file_entry_ingested(self, tmp_path):
+        codebase = tmp_path / "app"
+        codebase.mkdir()
+        vault = tmp_path / "vault"
+        vault.mkdir()
+        (codebase / "config.php").write_text("<?php", encoding="utf-8")
+        (codebase / "index.html").write_text("<html/>", encoding="utf-8")
+
+        # Only ingest config.php, not index.html
+        config = WikiConfig(codebase_path=[str(codebase / "config.php")])
+        cs = scan_codebase(config, vault, logger)
+
+        assert len(cs.new_files) == 1
+        assert cs.new_files[0].name == "config.php"
+
+    def test_directory_and_file_combined(self, tmp_path):
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "service.py").write_text("# service", encoding="utf-8")
+        config_file = tmp_path / "config.php"
+        config_file.write_text("<?php", encoding="utf-8")
+        vault = tmp_path / "vault"
+        vault.mkdir()
+
+        config = WikiConfig(codebase_path=[str(src), str(config_file)])
+        cs = scan_codebase(config, vault, logger)
+
+        names = {f.name for f in cs.new_files}
+        assert names == {"service.py", "config.php"}
+
+    def test_excluded_dirs_not_walked_in_multi_path(self, tmp_path):
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "api.py").write_text("# api", encoding="utf-8")
+        vendor = tmp_path / "vendor"
+        vendor.mkdir()
+        (vendor / "lib.php").write_text("<?php", encoding="utf-8")
+        vault = tmp_path / "vault"
+        vault.mkdir()
+
+        # Only include src, not vendor
+        config = WikiConfig(codebase_path=[str(src)])
+        cs = scan_codebase(config, vault, logger)
+
+        assert len(cs.new_files) == 1
+        assert cs.new_files[0].name == "api.py"

@@ -16,7 +16,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from codebase_wiki_builder.config import WikiConfig
+from codebase_wiki_builder.config import WikiConfig, get_codebase_root
 from codebase_wiki_builder.vault import (
     EXCLUDED_DIRS,
     VAULT_EXCLUDED_DIRS,
@@ -88,7 +88,7 @@ def scan_codebase(
         Fully-populated change-set. Never raises; all per-file errors are
         logged and the affected file is treated as skipped.
     """
-    codebase_root = Path(config.codebase_path)
+    codebase_root = get_codebase_root(config)
     change_set = ChangeSet()
 
     # --- Pass 1: classify source files ---
@@ -121,15 +121,23 @@ def _discover_source_files(
     change_set: ChangeSet,
     logger: logging.Logger,
 ) -> None:
-    """Walk the codebase and classify each file into the appropriate ChangeSet list."""
-    for dirpath, dirnames, filenames in os.walk(codebase_root):
-        # Prune excluded directories in-place (modifies dirnames before os.walk descends)
-        dirnames[:] = [d for d in dirnames if d not in EXCLUDED_DIRS]
+    """Iterate over all entries in config.codebase_path and classify each file.
 
-        current_dir = Path(dirpath)
-        for filename in filenames:
-            file = current_dir / filename
-            _classify_source_file(file, codebase_root, vault_root, config, change_set, logger)
+    Directory entries are walked recursively (excluding EXCLUDED_DIRS).
+    File entries are classified directly without walking.
+    """
+    for path_str in config.codebase_path:
+        entry = Path(path_str)
+        if entry.is_dir():
+            for dirpath, dirnames, filenames in os.walk(entry):
+                # Prune excluded directories in-place (modifies dirnames before os.walk descends)
+                dirnames[:] = [d for d in dirnames if d not in EXCLUDED_DIRS]
+                current_dir = Path(dirpath)
+                for filename in filenames:
+                    file = current_dir / filename
+                    _classify_source_file(file, codebase_root, vault_root, config, change_set, logger)
+        elif entry.is_file():
+            _classify_source_file(entry, codebase_root, vault_root, config, change_set, logger)
 
 
 def _classify_source_file(

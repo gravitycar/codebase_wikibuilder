@@ -15,7 +15,7 @@ import logging
 import re
 from pathlib import Path
 
-from codebase_wiki_builder.config import WikiConfig
+from codebase_wiki_builder.config import WikiConfig, get_codebase_root
 from codebase_wiki_builder.llm_client import LLMClient, LLMError  # noqa: F401 (re-exported)
 from codebase_wiki_builder.vault import (
     compute_md5,
@@ -341,7 +341,7 @@ def summarize_file(
     OSError
         If the source file cannot be read.
     """
-    codebase_root = Path(config.codebase_path)
+    codebase_root = get_codebase_root(config)
 
     # Read file content — errors="replace" avoids crashing on non-UTF-8 bytes
     file_content = path.read_text(encoding="utf-8", errors="replace")

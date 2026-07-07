@@ -836,7 +836,7 @@ class TestCheckQueryCache:
 
     def _make_config(self, codebase_path: str = "/tmp/app"):
         from codebase_wiki_builder.config import WikiConfig
-        return WikiConfig(codebase_path=codebase_path)
+        return WikiConfig(codebase_path=[codebase_path])
 
     def _run(self, question: str, vault_root: Path, llm_client,
              index_content: str = ""):
